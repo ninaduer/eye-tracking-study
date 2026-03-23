@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <title>CM Visualizer - Professional Export</title>
+  <style>
+    :root { background-color: #000; } /* Immediate fix */
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+      background: #000;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: row; 
+      height: 100vh;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    #controls {
+      width: 300px;
+      text-align: left;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      border-right: 1px solid #333;
+      padding-right: 20px;
+    }
+    #center-viewport {
+      flex-grow: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      background: #000;
+    }
+    .control-group {
+      margin-bottom: 25px;
+    }
+    .canvas-container {
+      position: relative;
+      display: inline-block;
+      cursor: crosshair;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+    img {
+      display: block;
+      max-height: 85vh;
+      max-width: 65vw;
+      border: 1px solid #444;
+    }
+    input, select, button {
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      background: #000;
+      color: #39FF14;
+      border: 1px solid #333;
+      padding: 10px;
+      width: 100%;
+      margin-top: 10px;
+      box-sizing: border-box;
+      transition: 0.2s;
+    }
+    button {
+      cursor: pointer;
+      border-color: #39FF14;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    button:hover {
+      background: #39FF14;
+      color: #000;
+    }
+    .download-btn {
+      border-color: #39FF14;
+      color: #39FF14;
+      margin-top: 5px;
+    }
+    .download-btn:hover {
+      background: #39FF14;
+      color: #000;
+    }
+    #status {
+      margin-top: 20px;
+      color: #39FF14;
+      font-weight: bold;
+      border-top: 1px solid #333;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+
+<body style="background-color: #000000;">
+
+  <div id="controls">
+    <div class="control-group">
+      UPLOAD JSON DATA
+      <input type="file" id="fileInput" accept=".json">
+    </div>
+
+    <div id="uiTools" style="display:none;">
+      <div class="control-group">
+        SELECT IMAGE
+        <select id="imgIdx" onchange="updateBaseImage()"></select>
+      </div>
+
+      <button onclick="startCalibration()">1. CALIBRATE</button>
+      <button onclick="renderHeatmap()">2. GENERATE</button>
+      
+      <div class="control-group" style="margin-top:30px;">
+        EXPORT OPTIONS
+        <button class="download-btn" onclick="downloadCombined()">Download JPG (Overlay)</button>
+        <button class="download-btn" onclick="downloadHeatmapOnly()">Download PNG (Transparent)</button>
+      </div>
+
+      <div id="status">READY</div>
+    </div>
+  </div>
+
+  <div id="center-viewport">
+    <div class="canvas-container">
+      <img id="baseImage" src="" style="display:none;" onclick="handleCalibClick(event)">
+      <canvas id="heatmapCanvas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const imagePaths = ['img1.jpg', 'img2.jpg', 'img3.jpg', 'img4.jpg', 'img5.jpg'];
+    let studyData = null;
+    let isCalibrating = false;
+    let calibPoints = [];
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const fileInput = document.getElementById('fileInput');
+    const imgIdxSelect = document.getElementById('imgIdx');
+    const baseImage = document.getElementById('baseImage');
+    const canvas = document.getElementById('heatmapCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status');
+
+    fileInput.onchange = (e) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          studyData = JSON.parse(event.target.result);
+          document.getElementById('uiTools').style.display = 'block';
+          setupSelector();
+          statusText.innerText = "DATA LOADED";
+        } catch (err) {
+          statusText.innerText = "ERROR: INVALID JSON";
+        }
+      };
+      reader.readAsText(e.target.files[0]);
+    };
+
+    function setupSelector() {
+      imgIdxSelect.innerHTML = '';
+      imagePaths.forEach((path, i) => {
+        const opt = new Option(`Image ${i + 1}`, i);
+        imgIdxSelect.add(opt);
+      });
+      updateBaseImage();
+    }
+
+    function updateBaseImage() {
+      const idx = parseInt(imgIdxSelect.value);
+      baseImage.src = imagePaths[idx];
+      baseImage.style.display = 'block';
+      // Clear canvas when switching images
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function startCalibration() {
+      isCalibrating = true;
+      calibPoints = [];
+      statusText.innerText = "CLICK TOP-LEFT OF IMAGE";
+    }
+
+    function handleCalibClick(e) {
+      if (!isCalibrating) return;
+      
+      // Get coordinates relative to the viewport
+      calibPoints.push({ x: e.clientX, y: e.clientY });
+
+      if (calibPoints.length === 1) {
+        statusText.innerText = "CLICK BOTTOM-RIGHT";
+      } else {
+        offsetX = calibPoints[0].x;
+        offsetY = calibPoints[0].y;
+        isCalibrating = false;
+        statusText.innerText = "CALIBRATION SAVED";
+      }
+    }
+
+    function renderHeatmap() {
+      if (!studyData) return;
+      
+      const idx = parseInt(imgIdxSelect.value);
+      
+      // Sync canvas size to the displayed image size
+      canvas.width = baseImage.clientWidth;
+      canvas.height = baseImage.clientHeight;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Heatmap styling
+      ctx.globalAlpha = 0.8; 
+      ctx.globalCompositeOperation = 'screen'; 
+
+      const points = studyData.gazeData.filter(d => d.imgIndex === idx);
+
+      points.forEach(p => {
+        const adjX = p.x - offsetX;
+        const adjY = p.y - offsetY;
+
+        // Skip points outside canvas bounds
+        if (adjX < 0 || adjY < 0 || adjX > canvas.width || adjY > canvas.height) return;
+
+        const radius = 45; 
+        const grad = ctx.createRadialGradient(adjX, adjY, 0, adjX, adjY, radius);
+        
+        grad.addColorStop(0, '#fde725');                  
+        grad.addColorStop(0.3, 'rgba(122, 209, 81, 0.9)'); 
+        grad.addColorStop(0.6, 'rgba(34, 168, 132, 0.6)'); 
+        grad.addColorStop(0.8, 'rgba(42, 120, 142, 0.3)'); 
+        grad.addColorStop(1, 'rgba(68, 1, 84, 0)');        
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(adjX, adjY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.globalAlpha = 1.0;
+      ctx.globalCompositeOperation = 'source-over';
+      statusText.innerText = "MAPPING RENDERED";
+    }
+
+    // --- Export Functions ---
+
+    function downloadCombined() {
+      if (canvas.width === 0) {
+        alert("Please generate the heatmap first.");
+        return;
+      }
+
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+
+      // Draw original image (scaled to current display size)
+      tempCtx.drawImage(baseImage, 0, 0, tempCanvas.width, tempCanvas.height);
+      
+      // Draw heatmap on top
+      tempCtx.drawImage(canvas, 0, 0);
+
+      const link = document.createElement('a');
+      link.download = `heatmap_combined_${Date.now()}.jpg`;
+      link.href = tempCanvas.toDataURL('image/jpeg', 0.9);
+      link.click();
+    }
+
+    function downloadHeatmapOnly() {
+      if (canvas.width === 0) {
+        alert("Please generate the heatmap first.");
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.download = `heatmap_layer_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+  </script>
+</body>
+</html>

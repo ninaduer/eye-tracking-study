@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark">
+  <title>CM Study</title>
+  <script src="https://cdn.jsdelivr.net/npm/webgazer@2.1.0/dist/webgazer.js"></script>
+  <style>
+    :root { background-color: #000; } /* Immediate fix */
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px;
+      font-weight: 500;
+      margin: 0;
+      overflow: hidden; 
+      background: #000000;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    
+    .container {
+      text-align: center;
+      z-index: 10;
+      background: transparent;
+    }
+
+    h2, h3, p, div, input, select, button {
+      font-size: 18px !important;
+      font-weight: 500 !important;
+      color: #ffffff;
+      margin: 10px 0;
+    }
+
+    #calibration-msg {
+      position: absolute;
+      top: 33.33%; 
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      text-align: center;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    img {
+      max-height: 80vh;
+      border: none;
+    }
+
+    button {
+      padding: 12px 24px;
+      cursor: pointer;
+      background: transparent;
+      color: #ffffff;
+      border: 1px solid;
+      border-color: #ffffff;
+      border-radius: 4px;
+      transition: 0.3s;
+    }
+
+    button:hover {
+       background: #ffffff;
+       color: #000;
+    }
+
+    .dot {
+      width: 20px;
+      height: 20px;
+      background: red;
+      border-radius: 50%;
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      z-index: 100;
+      transition: background 0.1s, box-shadow 0.1s;
+    }
+
+    canvas#heatmap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    input, select {
+      padding: 10px;
+      border: 1px solid #ffffff;
+      background: #000000;
+      color: #ffffff;
+      outline: none;
+    }
+
+    #timer {
+      font-size: 10px !important;
+      opacity: 1;
+    }
+  </style>
+</head>
+
+<body style="background-color: #000000;">
+
+  <div id="calibration-msg"></div>
+  <div class="container" id="app"></div>
+  <canvas id="heatmap"></canvas>
+
+  <script>
+    const images = ['img1.jpg', 'img2.jpg', 'img3.jpg', 'img4.jpg', 'img5.jpg'];
+    const DISPLAY_TIME = 15000; // 15 seconds in milliseconds
+    
+    let participant = {};
+    let currentImage = 0;
+    let gazeData = [];
+    let isTracking = false;
+    let timerInterval;
+
+    const app = document.getElementById('app');
+    const calMsg = document.getElementById('calibration-msg');
+    const canvas = document.getElementById('heatmap');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function showForm() {
+      app.innerHTML = `
+        <div>CURIOSITY METHOD</div>
+        <p>Research</p>
+        <input type="text" placeholder="Name" id="pid" /><br/>
+        <select id="gender">
+          <option value="" disabled selected>Select Gender</option>
+          <option value="female">Female</option>
+          <option value="male">Male</option>
+          <option value="non-binary">Non-binary</option>
+          <option value="prefer-not-to-say">Prefer not to say</option>
+        </select><br/>
+        <button onclick="showInstructions()">NEXT</button>
+      `;
+    }
+
+    function showInstructions() {
+      participant.id = document.getElementById('pid').value || "anonymous";
+      participant.gender = document.getElementById('gender').value;
+
+      app.innerHTML = `
+        <div>INSTRUCTIONS</div>
+        <p>1. Allow webcam access.</p>
+        <p>2. Keep your head steady and sit center to the screen.</p>
+        <p>3. Each image will be shown for 15 seconds.</p>
+        <p>4. Click every red dot 5 times while looking at it.</p>
+        <button onclick="startCalibration()">START CALIBRATION</button>
+      `;
+    }
+
+    const clicksNeeded = 5;
+
+    async function startCalibration() {
+      app.innerHTML = ''; 
+      calMsg.innerHTML = 'Calibrating: Look at the dots';
+      
+      await webgazer.setRegression('ridge') 
+        .setGazeListener((data, elapsed) => {
+          if (data && isTracking) {
+            gazeData.push({ x: data.x, y: data.y, time: elapsed, imgIndex: currentImage });
+            drawPoint(data.x, data.y);
+          }
+        }).begin();
+
+      webgazer.showVideoPreview(true).showPredictionPoints(true);
+      createCalibrationPoints();
+    }
+
+    function createCalibrationPoints() {
+      const positions = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90]];
+
+      positions.forEach((pos) => {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        dot.style.left = pos[0] + '%';
+        dot.style.top = pos[1] + '%';
+        dot.dataset.count = 0;
+
+        dot.onclick = () => {
+          let count = parseInt(dot.dataset.count) + 1;
+          dot.dataset.count = count;
+          dot.style.opacity = 1 - (count / clicksNeeded) + 0.2;
+
+          if (count >= clicksNeeded) {
+            dot.style.background = '#39FF14';
+            dot.style.opacity = '1';
+            dot.style.boxShadow = '0 0 15px #39FF14'; 
+            dot.style.pointerEvents = 'none';
+            checkCalibrationComplete();
+          }
+        };
+        document.body.appendChild(dot);
+      });
+    }
+
+    function checkCalibrationComplete() {
+      const dots = document.querySelectorAll('.dot');
+      const greenDots = Array.from(dots).filter(d => d.style.background.includes('rgb(57, 255, 20)'));
+      
+      if (greenDots.length === dots.length) {
+        dots.forEach(d => d.remove());
+        calMsg.innerHTML = 'Calibration Complete';
+        webgazer.showVideoPreview(false).showPredictionPoints(false);
+        setTimeout(() => {
+            calMsg.innerHTML = '';
+            showImage();
+        }, 1200);
+      }
+    }
+
+    function drawPoint(x, y) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'; 
+      ctx.beginPath();
+      ctx.arc(x, y, 25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function showImage() {
+      if (currentImage >= images.length) {
+        endStudy();
+        return;
+      }
+
+      isTracking = true;
+      let timeLeft = 15;
+
+      app.innerHTML = `
+        <div style="margin-bottom: 10px; opacity: 1;">Image ${currentImage + 1} / ${images.length}</div>
+        <img src="${images[currentImage]}" alt="Night Scene" />
+        <div id="timer">Next image in: ${timeLeft}s</div>
+      `;
+
+      // Countdown logic
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        const timerEl = document.getElementById('timer');
+        if(timerEl) timerEl.innerText = `Next image in: ${timeLeft}s`;
+        
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          nextImage();
+        }
+      }, 1000);
+    }
+
+    function nextImage() {
+      clearInterval(timerInterval);
+      isTracking = false;
+      currentImage++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      showImage();
+    }
+
+    function endStudy() {
+      isTracking = false;
+      webgazer.pause();
+      app.innerHTML = `
+        <div>Study Complete</div>
+        <p>Your data is ready for export.</p>
+        <button onclick="downloadData()">DOWNLOAD DATA</button>
+      `;
+    }
+
+    function downloadData() {
+      const exportObj = { participant, gazeData };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", `study_${participant.id}.json`);
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    }
+
+    showForm();
+  </script>
+</body>
+</html>
