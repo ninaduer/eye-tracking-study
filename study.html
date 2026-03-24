@@ -170,7 +170,7 @@
         .setGazeListener((data, elapsed) => {
           if (data && isTracking) {
             gazeData.push({ x: data.x, y: data.y, time: elapsed, imgIndex: currentImage });
-            drawPoint(data.x, data.y);
+            //drawPoint(data.x, data.y);
           }
         }).begin();
 
