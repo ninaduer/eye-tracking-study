@@ -110,7 +110,7 @@
 
   <script>
     const images = ['img1.jpg', 'img2.jpg', 'img3.jpg', 'img4.jpg', 'img5.jpg'];
-    const DISPLAY_TIME = 15000; // 15 seconds in milliseconds
+    const DISPLAY_TIME = 10000; // 10 seconds in milliseconds
     
     let participant = {};
     let currentImage = 0;
@@ -154,7 +154,7 @@
         <div>INSTRUCTIONS</div>
         <p>1. Allow webcam access.</p>
         <p>2. Keep your head steady and sit center to the screen.</p>
-        <p>3. Each image will be shown for 15 seconds.</p>
+        <p>3. Each image will be shown for 10 seconds.</p>
         <p>4. Click every red dot 5 times while looking at it.</p>
         <button onclick="startCalibration()">START CALIBRATION</button>
       `;
@@ -234,7 +234,7 @@
       }
 
       isTracking = true;
-      let timeLeft = 15;
+      let timeLeft = 10;
 
       app.innerHTML = `
         <div style="margin-bottom: 10px; opacity: 1;">Image ${currentImage + 1} / ${images.length}</div>
