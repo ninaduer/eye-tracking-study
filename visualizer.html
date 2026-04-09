@@ -247,6 +247,23 @@
       statusText.innerText = "MAPPING RENDERED";
     }
 
+    // --- Helper for Naming Convention ---
+    function generateFileName(extension) {
+      // Pulls participant ID from your study data structure
+      const participantId = studyData.participant.id || "Unknown";
+      
+      // Image number (Index + 1)
+      const imgNr = parseInt(imgIdxSelect.value) + 1;
+      
+      // Format Date and Time
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const timeStr = now.getHours().toString().padStart(2, '0') + '-' + 
+                      now.getMinutes().toString().padStart(2, '0');
+
+      return `${participantId}_IMG-${imgNr}_${dateStr}_${timeStr}.${extension}`;
+    }
+
     // --- Export Functions ---
 
     function downloadCombined() {
@@ -267,7 +284,7 @@
       tempCtx.drawImage(canvas, 0, 0);
 
       const link = document.createElement('a');
-      link.download = `heatmap_combined_${Date.now()}.jpg`;
+      link.download = generateFileName('jpg');
       link.href = tempCanvas.toDataURL('image/jpeg', 0.9);
       link.click();
     }
@@ -279,7 +296,7 @@
       }
 
       const link = document.createElement('a');
-      link.download = `heatmap_layer_${Date.now()}.png`;
+      link.download = generateFileName('png');
       link.href = canvas.toDataURL('image/png');
       link.click();
     }
